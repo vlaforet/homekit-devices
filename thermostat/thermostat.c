@@ -18,13 +18,13 @@
 #include <homekit/characteristics.h>
 #include <wifi_config.h>
 #include <dht/dht.h>
+#include <string.h>
 
-#include "led_status.h"
 #include "rockyhill_common.h"
 
 #define MODEL "RH-TH1"
 #define SERIAL_PREFIX "4GD6"
-#define FIRMWARE_REVISION "0.0.2"
+#define FIRMWARE_REVISION "0.1.1"
 
 #define SENSOR_PIN 4
 #define HEAT_RELAY_PIN 5
@@ -79,6 +79,7 @@ void update(homekit_characteristic_t *ch, homekit_value_t value, void *context) 
 
 void compute_state() {
     printf("{--targtemp//%.1f--}\n", target_temperature.value.float_value);
+    printf("{--on//%s--}\n", target_state.value.int_value != HOMEKIT_CURRENT_HEATING_COOLING_STATE_OFF ? "1" : "0");
 
     if (current_state.value.int_value == HOMEKIT_CURRENT_HEATING_COOLING_STATE_HEAT) {
         if (target_state.value.int_value != HOMEKIT_TARGET_HEATING_COOLING_STATE_HEAT ||
@@ -125,6 +126,51 @@ void sensor_task() {
     }
 }
 
+void uart_task() {
+    int minus_char = 0;
+    int plus_char = 0;
+    int off_char = 0;
+    while (1) {
+        int c = getchar();
+        if (c == "{--plusbutt--}"[plus_char]) {
+            plus_char++;
+            if (plus_char == strlen("{--plusbutt--}")) {
+                plus_char = 0;
+                target_temperature.value = HOMEKIT_FLOAT(target_temperature.value.float_value + 0.5);
+                homekit_characteristic_notify(&target_temperature, target_temperature.value);
+
+                if (target_state.value.int_value == HOMEKIT_CURRENT_HEATING_COOLING_STATE_OFF) {
+                    target_state.value = HOMEKIT_INT(HOMEKIT_CURRENT_HEATING_COOLING_STATE_HEAT);
+                    homekit_characteristic_notify(&target_state, target_state.value);
+                }
+            }
+        } else { plus_char = 0; }
+
+        if (c == "{--minusbutt--}"[minus_char]) {
+            minus_char++;
+            if (minus_char == strlen("{--minusbutt--}")) {
+                minus_char = 0;
+                target_temperature.value = HOMEKIT_FLOAT(target_temperature.value.float_value - 0.5);
+                homekit_characteristic_notify(&target_temperature, target_temperature.value);
+
+                if (target_state.value.int_value == HOMEKIT_CURRENT_HEATING_COOLING_STATE_OFF) {
+                    target_state.value = HOMEKIT_INT(HOMEKIT_CURRENT_HEATING_COOLING_STATE_HEAT);
+                    homekit_characteristic_notify(&target_state, target_state.value);
+                }
+            }
+        } else { minus_char = 0; }
+
+        if (c == "{--off--}"[off_char]) {
+            off_char++;
+            if (off_char == strlen("{--off--}")) {
+                off_char = 0;
+                target_state.value = HOMEKIT_INT(HOMEKIT_CURRENT_HEATING_COOLING_STATE_OFF);
+                homekit_characteristic_notify(&target_state, target_state.value);
+            }
+        } else { off_char = 0; }
+    }
+}
+
 void user_init(void) {
     uart_set_baud(0, 115200);
 
@@ -136,4 +182,5 @@ void user_init(void) {
     gpio_set_pullup(SENSOR_PIN, false, false);
     relay(false);
     xTaskCreate(sensor_task, "Sensor", 256, NULL, 2, NULL);
+    xTaskCreate(uart_task, "read serial task", 256, NULL, 1, NULL);
 }

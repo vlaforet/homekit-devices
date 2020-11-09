@@ -20,21 +20,16 @@
 #include <etstimer.h>
 #include <esplibs/libmain.h>
 
-#include "led_status.h"
-#include "ota-tftp.h"
-#include "rboot-api.h"
-#include "button.h"
-
+#include "rockyhill_common.h"
 #include "somfy_rts.h"
 
 #define MODEL_NAME "RH-SO1"
 #define SERIAL_PREFIX "DF53"
-#define FIRMWARE_REVISION_VALUE "0.0.1"
+#define FIRMWARE_REVISION_VALUE "0.1.1"
 #define LED_PIN 13
 #define BUTTON_PIN 5
 #define RTS_PIN 4
 #define BASE_ADDRESS 0x1695F7
-
 
 #define POSITION_CLOSED 0
 #define POSITION_OPEN 100
@@ -43,10 +38,6 @@
 #define POSITION_STATE_OPENING 1
 #define POSITION_STATE_STOPPED 2
 
-#define STRINGIZE(x) #x
-#define STRINGIZE_VALUE_OF(x) STRINGIZE(x)
-
-
 typedef struct {
     int id;
     homekit_characteristic_t* target_position;
@@ -54,19 +45,9 @@ typedef struct {
     ETSTimer timer;
 } remote_t;
 
-static led_status_t led_status;
-led_status_pattern_t identify = { 4, (int[]){ 100, 100, 100, 350 } };
-led_status_pattern_t activity = { 2, (int[]){ 100, 100 } };
-led_status_pattern_t waiting  = { 2, (int[]){ 300, 150 } };
-
 homekit_characteristic_t name = HOMEKIT_CHARACTERISTIC_(NAME, "Rollershutter");
 homekit_characteristic_t serial = HOMEKIT_CHARACTERISTIC_(SERIAL_NUMBER, SERIAL_PREFIX);
 homekit_accessory_t *accessories[2];
-homekit_server_config_t config = {
-    .accessories = accessories,
-    .password = STRINGIZE_VALUE_OF(HK_PASSWORD),
-    .setupId = STRINGIZE_VALUE_OF(SETUPID)
-};
 bool prog_mode = false;
 
 void reset_configuration_task() {
@@ -80,9 +61,6 @@ void reset_configuration_task() {
     sdk_system_restart();
     vTaskDelete(NULL);
 }
-
-void reset_configuration() {xTaskCreate(reset_configuration_task, "Reset configuration", 256, NULL, 2, NULL); }
-void accessory_identify(homekit_value_t _value) { led_status_set_repeat(led_status, &identify, 3); }
 
 void back_to_default(remote_t *remote) {
     remote->target_position->value.int_value = 50;
